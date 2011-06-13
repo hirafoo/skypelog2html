@@ -145,10 +145,10 @@ sub generate_daily {
     background-color: tan;
     text-align: center;
 }
-.usercolor1 {
+.@{[$self->text_back_color->{$self->user1}]} {
     background-color: lightsteelblue;
 }
-.usercolor2 {
+.@{[$self->text_back_color->{$self->user2}]} {
     background-color: thistle;
 }
 -->
