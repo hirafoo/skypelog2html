@@ -15,15 +15,14 @@ sub init {
     my ($user1, $user2, $dbfile) = @args;
     $dbfile ||= "main.db";
     (($user1 && $user2) and (-f $dbfile)) or do {
-        print "usage: perl $0 user_id1 user_id2 (skype_logfile)\n";
-        exit;
+        die "usage: perl $0 user_id1 user_id2 (skype_logfile)\n";
     };
     $self->user1($user1);
     $self->user2($user2);
     $self->dbfile($dbfile);
     $self->text_back_color(+{
-        $self->user1 => "usercolor1",
-        $self->user2 => "usercolor2",
+        $self->user1 => "userColor1",
+        $self->user2 => "userColor2",
     });
     $self->daily_log(+{});
     my $query = sprintf 'dbi:SQLite:dbname=%s', $self->dbfile;
@@ -87,7 +86,8 @@ sub generate_index {
             push @log_index, qq{<hr />\n};
         }
         ($_y, $_m) = ($1, $2);
-        push @log_index, qq{<a href="$ymd.html" target="_blank">$ymd</a><br />\n};
+        my $line_number = @{$self->daily_log->{$ymd}->{body}};
+        push @log_index, qq{<a href="$ymd.html" target="_blank">$ymd</a> (line: $line_number)<br />\n};
     }
 
     my $html = sprintf <<_STR, join "", @log_index;
