@@ -111,17 +111,11 @@ sub generate_index {
     close $fh;
 }
 
-sub generate_daily {
-    my ($self, ) = @_;
+sub daily_html1 {
+    my ($self, $args) = @_;
+    my ($ymd, $prev) = @$args{qw/ymd prev/};
 
-    my $i = 0;
-    my @log_ymds = reverse sort keys %{$self->daily_log};
-
-    for my $ymd (@log_ymds) {
-        my $next = $log_ymds[$i - 1];
-        my $prev = ($log_ymds[$i + 1] || $log_ymds[0]);
-
-        my $html1 = <<_STR;
+    my $html = <<_HTML;
 <html>
 <head>
 <title>$ymd</title>
@@ -165,11 +159,14 @@ sub generate_daily {
 <p><p/>
 <div class="main">
 <div><div class="main_l1 head1">time</div><div class="main_l2 head2">From</div><div class="main_l3 head3">Body_xml</div></div>
-_STR
+_HTML
+    return $html;
+}
+sub daily_html2 {
+    my ($self, $args) = @_;
+    my ($ymd, $next) = @$args{qw/ymd next/};
 
-        unshift @{$self->daily_log->{$ymd}->{body}}, $html1;
-
-        my $html2 = <<_STR;
+    my $html = <<_HTML;
 </div>
 <p><p/>
 $ymd <a href="$next.html" rel="next">$next</a>
@@ -177,8 +174,22 @@ $ymd <a href="$next.html" rel="next">$next</a>
 <div class="autopagerize_insert_before"></div>
 </body>
 </html>
-_STR
+_HTML
+    return $html;
+}
+sub generate_daily {
+    my ($self, ) = @_;
 
+    my $i = 0;
+    my @log_ymds = reverse sort keys %{$self->daily_log};
+
+    for my $ymd (@log_ymds) {
+        my $next = $log_ymds[$i - 1];
+        my $prev = ($log_ymds[$i + 1] || $log_ymds[0]);
+
+        my $html1 = $self->daily_html1({ymd => $ymd, prev => $prev});
+        unshift @{$self->daily_log->{$ymd}->{body}}, $html1;
+        my $html2 = $self->daily_html2({ymd => $ymd, next => $next});
         push @{$self->daily_log->{$ymd}->{body}}, $html2;
 
         open my $fh, ">", "$ymd.html";
