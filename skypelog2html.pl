@@ -5,24 +5,25 @@ use warnings;
 package SkypeLog2HTML;
 use Class::Accessor::Lite (
     new => 1,
-    rw  => [qw/user1 user2 dbfile text_back_color all_messages daily_log dbh/],
+    rw  => [qw/user_id1 user_id2 dbfile text_back_color all_messages daily_log dbh/],
 );
 use DBIx::Simple;
 use Time::Piece;
 
 sub init {
-    my ($self, @args) = @_;
-    my ($user1, $user2, $dbfile) = @args;
+    my ($self, $args) = @_;
+    my ($user_id1, $user_id2, $dbfile, $view_type) = @$args{qw/user_id1 user_id2 dbfile view_type/};
     $dbfile ||= "main.db";
-    (($user1 && $user2) and (-f $dbfile)) or do {
-        die "usage: perl $0 user_id1 user_id2 (skype_logfile)\n";
+    $view_type ||= "pc";
+    (($user_id1 && $user_id2) and (-f $dbfile)) or do {
+        die "usage: $0 -user_id1 user_id1 -user_id2 user_id2 (-dbfile skype_logfile) (-view_type [pc|sp])\n";
     };
-    $self->user1($user1);
-    $self->user2($user2);
+    $self->user_id1($user_id1);
+    $self->user_id2($user_id2);
     $self->dbfile($dbfile);
     $self->text_back_color(+{
-        $self->user1 => "userColor1",
-        $self->user2 => "userColor2",
+        $self->user_id1 => "userColor1",
+        $self->user_id2 => "userColor2",
     });
     $self->daily_log(+{});
     my $query = sprintf 'dbi:SQLite:dbname=%s', $self->dbfile;
@@ -44,7 +45,7 @@ sub get_all_messages {
 
     my $query = sprintf
         'SELECT timestamp, author, body_xml FROM Messages WHERE chatname LIKE "#%s/$%s;%%" OR chatname LIKE "#%s/$%s;%%" ORDER BY id ASC',
-        $self->user1, $self->user2, $self->user2, $self->user1;
+        $self->user_id1, $self->user_id2, $self->user_id2, $self->user_id1;
     my $result = $self->dbh->query($query);
     $self->all_messages($result);
 }
@@ -72,6 +73,20 @@ sub divide_messages_daily {
     }
     $self->daily_log(\%daily_log);
 }
+sub index_template {
+    my ($self, ) = @_;
+    my $template = <<_TEMPLATE;
+<html>
+<head>
+<title>skype log</title>
+</head>
+<body>
+%s
+</body>
+</html>
+_TEMPLATE
+    return $template;
+}
 sub generate_index {
     my ($self, ) = @_;
 
@@ -90,17 +105,7 @@ sub generate_index {
         push @log_index, qq{<a href="$ymd.html" target="_blank">$ymd</a> (line: $line_number)<br />\n};
     }
 
-    my $html = sprintf <<_STR, join "", @log_index;
-<html>
-<head>
-<title>skype log</title>
-</head>
-<body>
-%s
-</body>
-</html>
-_STR
-
+    my $html = sprintf $self->index_template, join "", @log_index;
     open my $fh, ">", "index.html";
     print $fh $html;
     close $fh;
@@ -145,10 +150,10 @@ sub generate_daily {
     background-color: tan;
     text-align: center;
 }
-.@{[$self->text_back_color->{$self->user1}]} {
+.@{[$self->text_back_color->{$self->user_id1}]} {
     background-color: lightsteelblue;
 }
-.@{[$self->text_back_color->{$self->user2}]} {
+.@{[$self->text_back_color->{$self->user_id2}]} {
     background-color: thistle;
 }
 -->
@@ -184,4 +189,8 @@ _STR
 }
 
 package main;
-SkypeLog2HTML->new->init(@ARGV)->run;
+use Getopt::Long qw/GetOptions/;
+
+my %args;
+GetOptions(\%args, qw/user_id1=s user_id2=s dbfile=s view_type=s/);
+SkypeLog2HTML->new->init(\%args)->run;
