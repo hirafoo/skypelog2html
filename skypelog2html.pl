@@ -210,7 +210,7 @@ _HTML
 }
 sub daily_html1_sp {
     my ($self, $args) = @_;
-    my ($ymd, $prev) = @$args{qw/ymd prev/};
+    my ($ymd, $prev, $next) = @$args{qw/ymd prev next/};
 
     my $html = <<_HTML;
 <!DOCTYPE html>
@@ -251,7 +251,7 @@ sub daily_html1_sp {
                 margin: 5px 0px;
                 clear: both;
             }
-            .privDate {
+            .prevDate {
                 font-size: 120%;
                 font-weight: bold;
             }
@@ -270,20 +270,20 @@ sub daily_html1_sp {
     </head>
     <body>
         <header id="header">
-            <span class="privDate"><a href="$prev.html">$prev</a></span>
-            <span class="nextDate">$ymd</span>
+            <span class="prevDate"><a href="$prev.html">$prev</a></span>
+            <span class="nextDate"><a href="$next.html">$next</a></span>
         </header>
 _HTML
     return $html;
 }
 sub daily_html2_sp {
     my ($self, $args) = @_;
-    my ($ymd, $next) = @$args{qw/ymd next/};
+    my ($prev, $next) = @$args{qw/prev next/};
 
     my $html = <<_HTML;
     <hr />
     <footer id="footer">
-            <span class="privDate">$next</span>
+            <span class="prevDate"><a href="$prev.html">$prev</a></span>
             <span class="nextDate"><a href="$next.html">$next</a></span>
         </footer>
     </body>
@@ -303,11 +303,11 @@ sub generate_daily {
         my $prev = ($log_ymds[$i + 1] || $log_ymds[0]);
 
         my $html1 = $self->view_type eq "pc" ? $self->daily_html1_pc({ymd => $ymd, prev => $prev}) :
-                    $self->view_type eq "sp" ? $self->daily_html1_sp({ymd => $ymd, prev => $prev}) : die "no match view_type";
+                    $self->view_type eq "sp" ? $self->daily_html1_sp({ymd => $ymd, prev => $prev, next => $next}) : die "no match view_type";
         unshift @{$self->daily_log->{$ymd}->{body}}, $html1;
 
         my $html2 = $self->view_type eq "pc" ? $self->daily_html2_pc({ymd => $ymd, next => $next}) :
-                    $self->view_type eq "sp" ? $self->daily_html2_sp({ymd => $ymd, next => $next}) : die "no match view_type";
+                    $self->view_type eq "sp" ? $self->daily_html2_sp({ymd => $ymd, prev => $prev, next => $next}) : die "no match view_type";
         push @{$self->daily_log->{$ymd}->{body}}, $html2;
 
         open my $fh, ">", "$ymd.html";
