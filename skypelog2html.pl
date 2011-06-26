@@ -5,22 +5,31 @@ use warnings;
 package SkypeLog2HTML;
 use Class::Accessor::Lite (
     new => 1,
-    rw  => [qw/user_id1 user_id2 dbfile text_back_color all_messages daily_log dbh/],
+    rw  => [qw/user_id1 user_id2 user_name1 user_name2 user_name_pair dbfile view_type text_back_color all_messages daily_log dbh/],
 );
 use DBIx::Simple;
 use Time::Piece;
 
 sub init {
     my ($self, $args) = @_;
-    my ($user_id1, $user_id2, $dbfile, $view_type) = @$args{qw/user_id1 user_id2 dbfile view_type/};
+    my ($user_id1, $user_id2, $user_name1, $user_name2, $dbfile, $view_type) = @$args{qw/user_id1 user_id2 user_name1 user_name2 dbfile view_type/};
+    $user_name1 ||= $user_id1;
+    $user_name2 ||= $user_id2;
     $dbfile ||= "main.db";
     $view_type ||= "pc";
     (($user_id1 && $user_id2) and (-f $dbfile)) or do {
-        die "usage: $0 -user_id1 user_id1 -user_id2 user_id2 (-dbfile skype_logfile) (-view_type [pc|sp])\n";
+        die "usage: $0 -user_id1 user_id1 -user_id2 user_id2 (-user_name1 show_user_name1) (-user_name2 show_user_name2) (-dbfile skype_logfile) (-view_type [pc|sp])\n";
     };
     $self->user_id1($user_id1);
     $self->user_id2($user_id2);
+    $self->user_name1($user_name1);
+    $self->user_name2($user_name2);
+    $self->user_name_pair(+{
+        $user_id1 => $user_name1,
+        $user_id2 => $user_name2,
+    });
     $self->dbfile($dbfile);
+    $self->view_type($view_type);
     $self->text_back_color(+{
         $self->user_id1 => "userColor1",
         $self->user_id2 => "userColor2",
@@ -63,12 +72,34 @@ sub divide_messages_daily {
         $row->{body_xml} =~ s{\n}{<br />}g;
         my ($author, $body_xml) = ($row->{author}, $row->{body_xml});
         my $print_author = (($author eq $before_author) and ($ymd eq $before_ymd)) ? '&nbsp;' : $author;
+        if (($print_author ne '&nbsp;') and ($self->view_type eq "sp")) {
+            $print_author = $self->user_name_pair->{$print_author};
+        }
+        my $hr_or_blank = ($author eq $before_author) ? "" : "<hr />";
         ($before_author, $before_ymd) = ($author, $ymd);
         my $color_class = $self->text_back_color->{$row->{author}};
 
-        my $body_row = sprintf
-            '<div class="%s"><div class="main_l1">%s</div><div class="main_l2">%s</div><div class="main_l3">%s</div></div>%s',
-            $color_class, $ymd_hms, $print_author, $body_xml, "\n";
+        my $body_row;
+        if ($self->view_type eq "pc") {
+            $body_row = sprintf
+                '<div class="%s"><div class="main_l1">%s</div><div class="main_l2">%s</div><div class="main_l3">%s</div></div>%s',
+                $color_class, $ymd_hms, $print_author, $body_xml, "\n";
+        }
+        elsif ($self->view_type eq "sp") {
+            $body_row = sprintf q{
+            %s
+            <div class="messageBox">
+                <div class="messageHeader">
+                    <span class="skypeName">%s</span>
+                    <span class="messageDate">%s</span>
+                </div>
+                <br />
+                <div class="messageBody %s">
+                    %s
+                </div>
+            </div>},
+                $hr_or_blank, $print_author, $ymd_hms, $color_class, $body_xml;
+        }
         push @{$daily_log{$ymd}->{body}}, $body_row;
     }
     $self->daily_log(\%daily_log);
@@ -111,7 +142,7 @@ sub generate_index {
     close $fh;
 }
 
-sub daily_html1 {
+sub daily_html1_pc {
     my ($self, $args) = @_;
     my ($ymd, $prev) = @$args{qw/ymd prev/};
 
@@ -162,7 +193,7 @@ sub daily_html1 {
 _HTML
     return $html;
 }
-sub daily_html2 {
+sub daily_html2_pc {
     my ($self, $args) = @_;
     my ($ymd, $next) = @$args{qw/ymd next/};
 
@@ -177,6 +208,90 @@ $ymd <a href="$next.html" rel="next">$next</a>
 _HTML
     return $html;
 }
+sub daily_html1_sp {
+    my ($self, $args) = @_;
+    my ($ymd, $prev) = @$args{qw/ymd prev/};
+
+    my $html = <<_HTML;
+<!DOCTYPE html>
+<html lang="ja">
+    <head>
+        <meta charset="utf-8" />
+        <meta name="viewport" content="width=device-width, user-scalable=no, initial-scale=1.0, minimum-scale=1.0, maximum-scale=1.0">
+        <meta name="format-detection" content="telephone=no,email=no" />
+        <title>$ymd</title>
+
+        <style type="text/css">
+            <!--
+            * {
+                margin: 0;
+                padding: 0;
+            }
+            header {
+                margin: 10px;
+            }
+            footer {
+                margin: 10px;
+            }
+            .messageHeader {
+                margin: 5px 1px 6px 2px;
+            }
+            .skypeName {
+                font-weight: bold;
+                float: left;
+            }
+            .messageBox {
+                margin: 0px 5px;
+            }
+            .messageDate {
+                float: right;
+                color: #9B9B9B;
+            }
+            .messageBody {
+                margin: 5px 0px;
+                clear: both;
+            }
+            .privDate {
+                font-size: 120%;
+                font-weight: bold;
+            }
+            .nextDate {
+                font-size: 120%;
+                font-weight: bold;
+                float: right;
+            }
+            .@{[$self->text_back_color->{$self->user_id1}]} {
+                background-color: lightsteelblue;
+             }
+            .@{[$self->text_back_color->{$self->user_id2}]} {
+                background-color: thistle;
+             }
+        </style>
+    </head>
+    <body>
+        <header id="header">
+            <span class="privDate"><a href="$prev.html">$prev</a></span>
+            <span class="nextDate">$ymd</span>
+        </header>
+_HTML
+    return $html;
+}
+sub daily_html2_sp {
+    my ($self, $args) = @_;
+    my ($ymd, $next) = @$args{qw/ymd next/};
+
+    my $html = <<_HTML;
+    <hr />
+    <footer id="footer">
+            <span class="privDate">$next</span>
+            <span class="nextDate"><a href="$next.html">$next</a></span>
+        </footer>
+    </body>
+</html>
+_HTML
+    return $html;
+}
+
 sub generate_daily {
     my ($self, ) = @_;
 
@@ -187,9 +302,12 @@ sub generate_daily {
         my $next = $log_ymds[$i - 1];
         my $prev = ($log_ymds[$i + 1] || $log_ymds[0]);
 
-        my $html1 = $self->daily_html1({ymd => $ymd, prev => $prev});
+        my $html1 = $self->view_type eq "pc" ? $self->daily_html1_pc({ymd => $ymd, prev => $prev}) :
+                    $self->view_type eq "sp" ? $self->daily_html1_sp({ymd => $ymd, prev => $prev}) : die "no match view_type";
         unshift @{$self->daily_log->{$ymd}->{body}}, $html1;
-        my $html2 = $self->daily_html2({ymd => $ymd, next => $next});
+
+        my $html2 = $self->view_type eq "pc" ? $self->daily_html2_pc({ymd => $ymd, next => $next}) :
+                    $self->view_type eq "sp" ? $self->daily_html2_sp({ymd => $ymd, next => $next}) : die "no match view_type";
         push @{$self->daily_log->{$ymd}->{body}}, $html2;
 
         open my $fh, ">", "$ymd.html";
@@ -203,5 +321,5 @@ package main;
 use Getopt::Long qw/GetOptions/;
 
 my %args;
-GetOptions(\%args, qw/user_id1=s user_id2=s dbfile=s view_type=s/);
+GetOptions(\%args, qw/user_id1=s user_id2=s user_name1=s user_name2=s dbfile=s view_type=s/);
 SkypeLog2HTML->new->init(\%args)->run;
