@@ -8,6 +8,7 @@ use Class::Accessor::Lite (
     rw  => [qw/user_id1 user_id2 user_name1 user_name2 user_name_pair dbfile view_type text_back_color all_messages daily_log dbh/],
 );
 use DBIx::Simple;
+use Pod::Usage qw/pod2usage/;
 use Time::Piece;
 
 sub init {
@@ -17,9 +18,8 @@ sub init {
     $user_name2 ||= $user_id2;
     $dbfile ||= "main.db";
     $view_type ||= "pc";
-    (($user_id1 && $user_id2) and (-f $dbfile)) or do {
-        die "usage: $0 -user_id1 user_id1 -user_id2 user_id2 (-user_name1 show_user_name1) (-user_name2 show_user_name2) (-dbfile skype_logfile) (-view_type [pc|sp])\n";
-    };
+    (($user_id1 && $user_id2) and (-f $dbfile))
+        or pod2usage;
     $self->user_id1($user_id1);
     $self->user_id2($user_id2);
     $self->user_name1($user_name1);
@@ -45,8 +45,8 @@ sub run {
 
     $self->get_all_messages;
     $self->divide_messages_daily;
-    $self->generate_index;
     $self->generate_daily;
+    $self->generate_index;
     $self->dbh->disconnect;
 }
 sub get_all_messages {
@@ -66,6 +66,7 @@ sub divide_messages_daily {
     while (my $row = $self->all_messages->hash) {
         $row->{body_xml} or next;
         my $tp = Time::Piece->new($row->{timestamp});
+        my $hms = $tp->hms;
         my $ymd_hms = join " ", $tp->ymd("/"), $tp->hms;
         my $ymd = $tp->ymd('_');
         $daily_log{$ymd}->{body} ||= [];
@@ -87,18 +88,18 @@ sub divide_messages_daily {
         }
         elsif ($self->view_type eq "sp") {
             $body_row = sprintf q{
-            %s
-            <div class="messageBox">
-                <div class="messageHeader">
-                    <span class="skypeName">%s</span>
-                    <span class="messageDate">%s</span>
-                </div>
-                <br />
-                <div class="messageBody %s">
-                    %s
-                </div>
-            </div>},
-                $hr_or_blank, $print_author, $ymd_hms, $color_class, $body_xml;
+        %s
+        <div class="messageBox">
+            <div class="messageHeader">
+                <span class="skypeName">%s</span>
+                <span class="messageDate">%s</span>
+            </div>
+            <br />
+            <div class="messageBody %s">
+                %s
+            </div>
+        </div>},
+                $hr_or_blank, $print_author, $hms, $color_class, $body_xml;
         }
         push @{$daily_log{$ymd}->{body}}, $body_row;
     }
@@ -220,7 +221,6 @@ sub daily_html1_sp {
         <meta name="viewport" content="width=device-width, user-scalable=no, initial-scale=1.0, minimum-scale=1.0, maximum-scale=1.0">
         <meta name="format-detection" content="telephone=no,email=no" />
         <title>$ymd</title>
-
         <style type="text/css">
             <!--
             * {
@@ -251,14 +251,19 @@ sub daily_html1_sp {
                 margin: 5px 0px;
                 clear: both;
             }
-            .prevDate {
+            .dateBox {
+                text-align: center;
                 font-size: 120%;
                 font-weight: bold;
             }
+            .prevDate {
+                float: left;
+            }
             .nextDate {
-                font-size: 120%;
-                font-weight: bold;
                 float: right;
+            }
+            .indexLink {
+                text-align: center;
             }
             .@{[$self->text_back_color->{$self->user_id1}]} {
                 background-color: lightsteelblue;
@@ -270,8 +275,11 @@ sub daily_html1_sp {
     </head>
     <body>
         <header id="header">
-            <span class="prevDate"><a href="$prev.html">$prev</a></span>
-            <span class="nextDate"><a href="$next.html">$next</a></span>
+            <div class="dateBox">
+                <span class="prevDate"><a href="$prev.html">$prev</a></span>
+                <span class="indexLink"><a href="index.html">index</a></span>
+                <span class="nextDate"><a href="$next.html">$next</a></span>
+            </div>
         </header>
 _HTML
     return $html;
@@ -281,10 +289,14 @@ sub daily_html2_sp {
     my ($prev, $next) = @$args{qw/prev next/};
 
     my $html = <<_HTML;
-    <hr />
-    <footer id="footer">
-            <span class="prevDate"><a href="$prev.html">$prev</a></span>
-            <span class="nextDate"><a href="$next.html">$next</a></span>
+
+        <hr />
+        <footer id="footer">
+            <div class="dateBox">
+                <span class="prevDate"><a href="$prev.html">$prev</a></span>
+                <span class="indexLink"><a href="index.html">index</a></span>
+                <span class="nextDate"><a href="$next.html">$next</a></span>
+            </div>
         </footer>
     </body>
 </html>
@@ -323,3 +335,49 @@ use Getopt::Long qw/GetOptions/;
 my %args;
 GetOptions(\%args, qw/user_id1=s user_id2=s user_name1=s user_name2=s dbfile=s view_type=s/);
 SkypeLog2HTML->new->init(\%args)->run;
+
+__END__
+
+=head1 NAME
+
+skypelog2html.pl - convert skype log to html from sqlite
+
+=head1 SYNOPSIS
+
+  # basic
+  % skypelog2html.pl -user_id1 user_id1 -user_id2 user_id2
+
+  # optional
+  % skypelog2html.pl -user_id1 user_id1 -user_id2 user_id2 \
+        -user_name1 show_user_name1 -user_name2 show_user_name2 -dbfile skype_logfile (-view_type [pc|sp])";
+
+=head1 ARGUMENTS
+
+=over 4
+
+=item -user_id1, -user_id2
+
+skype id
+
+=back
+
+=head1 OPTIONS
+
+=over 4
+
+=item -dbfile
+
+  target skype log file. default is "main.db".
+
+=item -view_type
+
+  generate html type. can set "pc" or "sp". default is "pc".
+  "sp" means "smart phone", not "special" :)
+
+=item -user_name1, -user_name2
+
+  this affect only when set view_type "sp".
+
+=back
+
+=cut
