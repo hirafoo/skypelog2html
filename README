@@ -1,0 +1,26 @@
+NAME
+    skypelog2html.pl - convert skype log to html from sqlite
+
+SYNOPSIS
+      # basic
+      % skypelog2html.pl -user_id1 user_id1 -user_id2 user_id2
+
+      # optional
+      % skypelog2html.pl -user_id1 user_id1 -user_id2 user_id2 \
+            -user_name1 show_user_name1 -user_name2 show_user_name2 -dbfile skype_logfile (-view_type [pc|sp])";
+
+ARGUMENTS
+    -user_id1, -user_id2
+        skype id
+
+OPTIONS
+    -dbfile
+          target skype log file. default is "main.db".
+
+    -view_type
+          generate html type. can set "pc" or "sp". default is "pc".
+          "sp" means "smart phone", not "special" :)
+
+    -user_name1, -user_name2
+          this affect only when set view_type "sp".
+
