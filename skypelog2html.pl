@@ -76,7 +76,7 @@ sub divide_messages_daily {
         if (($print_author ne '&nbsp;') and ($self->view_type eq "sp")) {
             $print_author = $self->user_name_pair->{$print_author};
         }
-        my $hr_or_blank = ($author eq $before_author) ? "" : "<hr />";
+        my $hr_or_blank = (($author eq $before_author) and ($before_ymd eq $ymd) ) ? "" : "<hr />";
         ($before_author, $before_ymd) = ($author, $ymd);
         my $color_class = $self->text_back_color->{$row->{author}};
 
