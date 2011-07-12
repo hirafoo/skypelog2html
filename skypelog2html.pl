@@ -5,7 +5,7 @@ use warnings;
 package SkypeLog2HTML;
 use Class::Accessor::Lite (
     new => 1,
-    rw  => [qw/user_id1 user_id2 user_name1 user_name2 user_name_pair dbfile view_type text_back_color all_messages daily_log dbh/],
+    rw  => [qw/user_id1 user_id2 user_name1 user_name2 user_name_pair dbfile view_type text_back_color all_messages daily_log dbh talk_ymd/],
 );
 use DBIx::Simple;
 use Pod::Usage qw/pod2usage/;
@@ -13,7 +13,8 @@ use Time::Piece;
 
 sub init {
     my ($self, $args) = @_;
-    my ($user_id1, $user_id2, $user_name1, $user_name2, $dbfile, $view_type) = @$args{qw/user_id1 user_id2 user_name1 user_name2 dbfile view_type/};
+    my ($user_id1, $user_id2, $user_name1, $user_name2, $dbfile, $view_type) =
+        @$args{qw/user_id1 user_id2 user_name1 user_name2 dbfile view_type/};
     $user_name1 ||= $user_id1;
     $user_name2 ||= $user_id2;
     $dbfile ||= "main.db";
@@ -45,8 +46,8 @@ sub run {
 
     $self->get_all_messages;
     $self->divide_messages_daily;
-    $self->generate_daily;
     $self->generate_index;
+    $self->generate_daily;
     $self->dbh->disconnect;
 }
 sub get_all_messages {
@@ -62,15 +63,32 @@ sub divide_messages_daily {
     my ($self, ) = @_;
 
     my %daily_log;
-    my ($before_author, $before_ymd) = ("", "");
+    my ($before_author, $before_ymd, $last_tp) = ("", "", undef);
     while (my $row = $self->all_messages->hash) {
         $row->{body_xml} or next;
         my $tp = Time::Piece->new($row->{timestamp});
         my $hms = $tp->hms;
-        my $ymd_hms = join " ", $tp->ymd("/"), $tp->hms;
         my $ymd = $tp->ymd('_');
-        $daily_log{$ymd}->{body} ||= [];
+        my $ymd_hms = join " ", $tp->ymd("/"), $tp->hms;
+
+        my $i;
+        if (ref $daily_log{$ymd}) {
+            $i = scalar keys %{ $daily_log{$ymd} };
+
+            if ($last_tp) {
+                my $diff = $tp - $last_tp;
+                if ($diff > 3600) {
+                    $i++;
+                }
+            }
+        }
+        else {
+            $i = 1;
+        }
+
+        $daily_log{$ymd}->{$i}->{body} ||= [];
         $row->{body_xml} =~ s{\n}{<br />}g;
+
         my ($author, $body_xml) = ($row->{author}, $row->{body_xml});
         my $print_author = (($author eq $before_author) and ($ymd eq $before_ymd)) ? '&nbsp;' : $author;
         if (($print_author ne '&nbsp;') and ($self->view_type eq "sp")) {
@@ -101,15 +119,20 @@ sub divide_messages_daily {
         </div>},
                 $hr_or_blank, $print_author, $hms, $color_class, $body_xml;
         }
-        push @{$daily_log{$ymd}->{body}}, $body_row;
+        push @{$daily_log{$ymd}->{$i}->{body}}, $body_row;
+
+        $last_tp = $tp;
     }
     $self->daily_log(\%daily_log);
 }
 sub index_template {
     my ($self, ) = @_;
     my $template = <<_TEMPLATE;
-<html>
+<!DOCTYPE html>
+<html lang="ja">
 <head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, user-scalable=no, initial-scale=1.0, minimum-scale=1.0, maximum-scale=1.0">
 <title>skype log</title>
 </head>
 <body>
@@ -123,19 +146,25 @@ sub generate_index {
     my ($self, ) = @_;
 
     my @log_ymds = reverse sort keys %{$self->daily_log};
-    my @log_index;
+    my (@log_index, @talk_ymd);
     my ($_y, $_m) = (0, 0);
     for my $ymd (@log_ymds) {
-        $ymd =~ /^(\d{4})_(\d{2})/;
-        $_y ||= $1;
-        $_m ||= $2;
-        unless (($_y == $1) and ($_m == $2)) {
-            push @log_index, qq{<hr />\n};
+        for my $i (sort {$b <=> $a} keys %{ $self->daily_log->{$ymd} }) {
+            $ymd =~ /^(\d{4})_(\d{2})/;
+            $_y ||= $1;
+            $_m ||= $2;
+            unless (($_y == $1) and ($_m == $2)) {
+                push @log_index, qq{<hr />\n};
+            }
+            ($_y, $_m) = ($1, $2);
+            my $line_number = @{$self->daily_log->{$ymd}->{$i}->{body}};
+            my $talk_ymd = "$ymd\_$i";
+            push @talk_ymd, $talk_ymd;
+            push @log_index, qq{<a href="$talk_ymd.html" target="_blank">$ymd $i</a> (line: $line_number)<br />\n};
         }
-        ($_y, $_m) = ($1, $2);
-        my $line_number = @{$self->daily_log->{$ymd}->{body}};
-        push @log_index, qq{<a href="$ymd.html" target="_blank">$ymd</a> (line: $line_number)<br />\n};
     }
+
+    $self->talk_ymd(\@talk_ymd);
 
     my $html = sprintf $self->index_template, join "", @log_index;
     open my $fh, ">", "index.html";
@@ -307,23 +336,26 @@ _HTML
 sub generate_daily {
     my ($self, ) = @_;
 
+    my @talk_ymd = @{ $self->talk_ymd };
     my $i = 0;
-    my @log_ymds = reverse sort keys %{$self->daily_log};
 
-    for my $ymd (@log_ymds) {
-        my $next = $log_ymds[$i - 1];
-        my $prev = ($log_ymds[$i + 1] || $log_ymds[0]);
+    for my $ymd_i (@talk_ymd) {
+        $ymd_i =~ /(\d{4}_\d{2}_\d{2})_(\d+)/;
+        my ($ymd, $k) = ($1, $2);
 
-        my $html1 = $self->view_type eq "pc" ? $self->daily_html1_pc({ymd => $ymd, prev => $prev}) :
-                    $self->view_type eq "sp" ? $self->daily_html1_sp({ymd => $ymd, prev => $prev, next => $next}) : die "no match view_type";
-        unshift @{$self->daily_log->{$ymd}->{body}}, $html1;
+        my $next = $talk_ymd[$i - 1];
+        my $prev = ($talk_ymd[$i + 1] || $talk_ymd[0]);
 
-        my $html2 = $self->view_type eq "pc" ? $self->daily_html2_pc({ymd => $ymd, next => $next}) :
-                    $self->view_type eq "sp" ? $self->daily_html2_sp({ymd => $ymd, prev => $prev, next => $next}) : die "no match view_type";
-        push @{$self->daily_log->{$ymd}->{body}}, $html2;
+        my $html1 = $self->view_type eq "pc" ? $self->daily_html1_pc({ymd => $ymd_i, prev => $prev}) :
+                    $self->view_type eq "sp" ? $self->daily_html1_sp({ymd => $ymd_i, prev => $prev, next => $next}) : die "no match view_type";
+        unshift @{$self->daily_log->{$ymd}->{$k}->{body}}, $html1;
 
-        open my $fh, ">", "$ymd.html";
-        print $fh @{$self->daily_log->{$ymd}->{body}};
+        my $html2 = $self->view_type eq "pc" ? $self->daily_html2_pc({ymd => $ymd_i, next => $next}) :
+                    $self->view_type eq "sp" ? $self->daily_html2_sp({ymd => $ymd_i, prev => $prev, next => $next}) : die "no match view_type";
+        push @{$self->daily_log->{$ymd}->{$k}->{body}}, $html2;
+
+        open my $fh, ">", "$ymd_i.html";
+        print $fh @{$self->daily_log->{$ymd}->{$k}->{body}};
         close $fh;
         $i++;
     }
