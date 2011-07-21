@@ -62,7 +62,8 @@ sub get_all_messages {
 sub divide_messages_daily {
     my ($self, ) = @_;
 
-    my %daily_log;
+    my $past_limit = 3600;
+    my (%daily_log, $diff);
     my ($before_author, $before_ymd, $last_tp) = ("", "", undef);
     while (my $row = $self->all_messages->hash) {
         $row->{body_xml} or next;
@@ -76,8 +77,8 @@ sub divide_messages_daily {
             $i = scalar keys %{ $daily_log{$ymd} };
 
             if ($last_tp) {
-                my $diff = $tp - $last_tp;
-                if ($diff > 3600) {
+                $diff = $tp - $last_tp;
+                if ($diff > $past_limit) {
                     $i++;
                 }
             }
@@ -94,7 +95,7 @@ sub divide_messages_daily {
         if (($print_author ne '&nbsp;') and ($self->view_type eq "sp")) {
             $print_author = $self->user_name_pair->{$print_author};
         }
-        my $hr_or_blank = (($author eq $before_author) and ($before_ymd eq $ymd) ) ? "" : "<hr />";
+        my $hr_or_blank = (($author eq $before_author) and ($before_ymd eq $ymd) and not ($diff > $past_limit)) ? "" : "<hr />";
         ($before_author, $before_ymd) = ($author, $ymd);
         my $color_class = $self->text_back_color->{$row->{author}};
 
