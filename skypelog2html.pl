@@ -7,7 +7,7 @@ use Class::Accessor::Lite (
     new => 1,
     rw  => [qw/user_id1 user_id2 user_name1 user_name2 user_name_pair dbfile view_type text_back_color all_messages daily_log dbh talk_ymd dss _dss/],
 );
-use Data::Section::Simple qw//;
+use Data::Section::Simple;
 use DBIx::Simple;
 use Pod::Usage qw/pod2usage/;
 use Time::Piece;

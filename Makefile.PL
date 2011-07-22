@@ -4,6 +4,7 @@ name 'skypelog2html.pl';
 all_from 'skypelog2html.pl';
 
 requires 'Class::Accessor::Lite';
+requires 'Data::Section::Simple';
 requires 'DBIx::Simple';
 requires 'Pod::Usage';
 requires 'Time::Piece';
