@@ -5,7 +5,7 @@ use warnings;
 package SkypeLog2HTML;
 use Class::Accessor::Lite (
     new => 1,
-    rw  => [qw/user_id1 user_id2 user_name1 user_name2 user_name_pair dbfile view_type text_back_color all_messages daily_log dbh talk_ymd dss/],
+    rw  => [qw/user_id1 user_id2 user_name1 user_name2 user_name_pair dbfile view_type text_back_color all_messages daily_log dbh talk_ymd dss _dss/],
 );
 use Data::Section::Simple qw//;
 use DBIx::Simple;
@@ -41,6 +41,7 @@ sub init {
     my $dbh = DBIx::Simple->connect($query) || die DBIx::Simple->error;
     $self->dbh($dbh);
     $self->dss(Data::Section::Simple->new("main"));
+    $self->_dss(+{});
     return $self;
 }
 sub run {
@@ -51,6 +52,16 @@ sub run {
     $self->generate_index;
     $self->generate_daily;
     $self->dbh->disconnect;
+}
+sub cache_dss {
+    my ($self, $name) = @_;
+    $name or die "no name.";
+    my $c = $self->_dss->{$name};
+    unless ($c) {
+        $c = $self->dss->get_data_section($name);
+        $self->_dss->{$name} = $c;
+    }
+    return $c;
 }
 sub get_all_messages {
     my ($self, ) = @_;
@@ -103,12 +114,12 @@ sub divide_messages_daily {
 
         my $body_row;
         if ($self->view_type eq "pc") {
-            $body_row = sprintf
-                '<div class="%s"><div class="main_l1">%s</div><div class="main_l2">%s</div><div class="main_l3">%s</div></div>%s',
-                $color_class, $ymd_hms, $print_author, $body_xml, "\n";
+            $body_row = sprintf $self->cache_dss("message_row_pc.html"),
+                $color_class, $ymd_hms, $print_author, $body_xml;
         }
         elsif ($self->view_type eq "sp") {
-            $body_row = sprintf $self->dss->get_data_section("daily_log_part.html"), $hr_or_blank, $print_author, $hms, $color_class, $body_xml;
+            $body_row = sprintf $self->cache_dss("message_row_sp.html"),
+                $hr_or_blank, $print_author, $ymd_hms, $color_class, $body_xml;
         }
         push @{$daily_log{$ymd}->{$i}->{body}}, $body_row;
 
@@ -140,7 +151,7 @@ sub generate_index {
 
     $self->talk_ymd(\@talk_ymd);
 
-    my $html = sprintf $self->dss->get_data_section("index_template.html"), join "", @log_index;
+    my $html = sprintf $self->cache_dss("index_template.html"), join "", @log_index;
     open my $fh, ">", "index.html";
     print $fh $html;
     close $fh;
@@ -150,7 +161,7 @@ sub daily_html1_pc {
     my ($self, $args) = @_;
     my ($ymd, $prev) = @$args{qw/ymd prev/};
 
-    my $html = sprintf $self->dss->get_data_section("daily_html1_pc.html"),
+    my $html = sprintf $self->cache_dss("daily_html1_pc.html"),
         $ymd, $self->text_back_color->{$self->user_id1}, $self->text_back_color->{$self->user_id2}, $prev, $prev, $ymd;
     return $html;
 }
@@ -158,14 +169,14 @@ sub daily_html2_pc {
     my ($self, $args) = @_;
     my ($ymd, $next) = @$args{qw/ymd next/};
 
-    my $html = sprintf $self->dss->get_data_section("daily_html2_pc.html"), $ymd, $next, $next;
+    my $html = sprintf $self->cache_dss("daily_html2_pc.html"), $ymd, $next, $next;
     return $html;
 }
 sub daily_html1_sp {
     my ($self, $args) = @_;
     my ($ymd, $prev, $next) = @$args{qw/ymd prev next/};
 
-    my $html = sprintf $self->dss->get_data_section("daily_html1_sp.html"),
+    my $html = sprintf $self->cache_dss("daily_html1_sp.html"),
         $ymd, $self->text_back_color->{$self->user_id1}, $self->text_back_color->{$self->user_id2}, $prev, $prev, $next, $next;
     return $html;
 }
@@ -173,7 +184,7 @@ sub daily_html2_sp {
     my ($self, $args) = @_;
     my ($prev, $next) = @$args{qw/prev next/};
 
-    my $html = sprintf $self->dss->get_data_section("daily_html2_sp.html"), $prev, $prev, $next, $next;
+    my $html = sprintf $self->cache_dss("daily_html2_sp.html"), $prev, $prev, $next, $next;
     return $html;
 }
 
@@ -213,8 +224,9 @@ GetOptions(\%args, qw/user_id1=s user_id2=s user_name1=s user_name2=s dbfile=s v
 SkypeLog2HTML->new->init(\%args)->run;
 
 __DATA__
-@@ message_row.html
-@@ daily_log_part.html
+@@ message_row_pc.html
+                <div class="%s"><div class="main_l1">%s</div><div class="main_l2">%s</div><div class="main_l3">%s</div></div>
+@@ message_row_sp.html
 %s
 <div class="messageBox">
     <div class="messageHeader">
@@ -226,7 +238,6 @@ __DATA__
         %s
     </div>
 </div>
-
 @@ index_template.html
 <!DOCTYPE html>
 <html lang="ja">
@@ -239,13 +250,12 @@ __DATA__
 %s
 </body>
 </html>
-
 @@ daily_html1_pc.html
 <html>
     <head>
         <title>%s</title>
         <style type="text/css">
-        <!--
+            <!--
             .main_l1 {
                 float: left;
                 width: 190px;
@@ -275,25 +285,23 @@ __DATA__
             .%s {
                 background-color: thistle;
             }
-        -->
+            -->
         </style>
     </head>
     <body>
         <div class="autopagerize_page_element">
-        <a href="%s.html">%s</a> %s
-        <p><p/>
-        <div class="main">
-        <div><div class="main_l1 head1">time</div><div class="main_l2 head2">From</div><div class="main_l3 head3">Body_xml</div></div>
-
+            <a href="%s.html">%s</a> %s
+            <p><p/>
+            <div class="main">
+                <div><div class="main_l1 head1">time</div><div class="main_l2 head2">From</div><div class="main_l3 head3">Body_xml</div></div>
 @@ daily_html2_pc.html
+            </div>
+            <p><p/>
+            %s <a href="%s.html" rel="next">%s</a>
         </div>
-        <p><p/>
-        %s <a href="%s.html" rel="next">%s</a>
-    </div>
-    <div class="autopagerize_insert_before"></div>
+        <div class="autopagerize_insert_before"></div>
     </body>
 </html>
-
 @@ daily_html1_sp.html
 <!DOCTYPE html>
 <html lang="ja">
@@ -334,7 +342,7 @@ __DATA__
             }
             .dateBox {
                 text-align: center;
-                font-size: 120%;
+                font-size: 120%%;
                 font-weight: bold;
             }
             .prevDate {
@@ -362,7 +370,6 @@ __DATA__
                 <span class="nextDate"><a href="%s.html">%s</a></span>
             </div>
         </header>
-
 @@ daily_html2_sp.html
 
         <hr />
