@@ -5,8 +5,9 @@ use warnings;
 package SkypeLog2HTML;
 use Class::Accessor::Lite (
     new => 1,
-    rw  => [qw/user_id1 user_id2 user_name1 user_name2 user_name_pair dbfile view_type text_back_color all_messages daily_log dbh talk_ymd/],
+    rw  => [qw/user_id1 user_id2 user_name1 user_name2 user_name_pair dbfile view_type text_back_color all_messages daily_log dbh talk_ymd dss/],
 );
+use Data::Section::Simple qw//;
 use DBIx::Simple;
 use Pod::Usage qw/pod2usage/;
 use Time::Piece;
@@ -39,6 +40,7 @@ sub init {
     my $query = sprintf 'dbi:SQLite:dbname=%s', $self->dbfile;
     my $dbh = DBIx::Simple->connect($query) || die DBIx::Simple->error;
     $self->dbh($dbh);
+    $self->dss(Data::Section::Simple->new("main"));
     return $self;
 }
 sub run {
@@ -106,42 +108,13 @@ sub divide_messages_daily {
                 $color_class, $ymd_hms, $print_author, $body_xml, "\n";
         }
         elsif ($self->view_type eq "sp") {
-            $body_row = sprintf q{
-        %s
-        <div class="messageBox">
-            <div class="messageHeader">
-                <span class="skypeName">%s</span>
-                <span class="messageDate">%s</span>
-            </div>
-            <br />
-            <div class="messageBody %s">
-                %s
-            </div>
-        </div>},
-                $hr_or_blank, $print_author, $hms, $color_class, $body_xml;
+            $body_row = sprintf $self->dss->get_data_section("daily_log_part.html"), $hr_or_blank, $print_author, $hms, $color_class, $body_xml;
         }
         push @{$daily_log{$ymd}->{$i}->{body}}, $body_row;
 
         $last_tp = $tp;
     }
     $self->daily_log(\%daily_log);
-}
-sub index_template {
-    my ($self, ) = @_;
-    my $template = <<_TEMPLATE;
-<!DOCTYPE html>
-<html lang="ja">
-<head>
-<meta charset="utf-8" />
-<meta name="viewport" content="width=device-width, user-scalable=no, initial-scale=1.0, minimum-scale=1.0, maximum-scale=1.0">
-<title>skype log</title>
-</head>
-<body>
-%s
-</body>
-</html>
-_TEMPLATE
-    return $template;
 }
 sub generate_index {
     my ($self, ) = @_;
@@ -167,7 +140,7 @@ sub generate_index {
 
     $self->talk_ymd(\@talk_ymd);
 
-    my $html = sprintf $self->index_template, join "", @log_index;
+    my $html = sprintf $self->dss->get_data_section("index_template.html"), join "", @log_index;
     open my $fh, ">", "index.html";
     print $fh $html;
     close $fh;
@@ -177,80 +150,158 @@ sub daily_html1_pc {
     my ($self, $args) = @_;
     my ($ymd, $prev) = @$args{qw/ymd prev/};
 
-    my $html = <<_HTML;
-<html>
-<head>
-<title>$ymd</title>
-<style type="text/css">
-<!--
-.main_l1 {
-    float: left;
-    width: 190px;
-}
-.main_l2 {
-    float:  left;
-    width:  75px;
-}
-.main_l3 {
-    overflow: hidden;
-}
-.head1 {
-    background-color: #99F;
-    text-align: center;
-}
-.head2 {
-    background-color: #9CC;
-    text-align: center;
-}
-.head3 {
-    background-color: tan;
-    text-align: center;
-}
-.@{[$self->text_back_color->{$self->user_id1}]} {
-    background-color: lightsteelblue;
-}
-.@{[$self->text_back_color->{$self->user_id2}]} {
-    background-color: thistle;
-}
--->
-</style>
-</head>
-<body>
-<div class="autopagerize_page_element">
-<a href="$prev.html">$prev</a> $ymd
-<p><p/>
-<div class="main">
-<div><div class="main_l1 head1">time</div><div class="main_l2 head2">From</div><div class="main_l3 head3">Body_xml</div></div>
-_HTML
+    my $html = sprintf $self->dss->get_data_section("daily_html1_pc.html"),
+        $ymd, $self->text_back_color->{$self->user_id1}, $self->text_back_color->{$self->user_id2}, $prev, $prev, $ymd;
     return $html;
 }
 sub daily_html2_pc {
     my ($self, $args) = @_;
     my ($ymd, $next) = @$args{qw/ymd next/};
 
-    my $html = <<_HTML;
-</div>
-<p><p/>
-$ymd <a href="$next.html" rel="next">$next</a>
-</div>
-<div class="autopagerize_insert_before"></div>
-</body>
-</html>
-_HTML
+    my $html = sprintf $self->dss->get_data_section("daily_html2_pc.html"), $ymd, $next, $next;
     return $html;
 }
 sub daily_html1_sp {
     my ($self, $args) = @_;
     my ($ymd, $prev, $next) = @$args{qw/ymd prev next/};
 
-    my $html = <<_HTML;
+    my $html = sprintf $self->dss->get_data_section("daily_html1_sp.html"),
+        $ymd, $self->text_back_color->{$self->user_id1}, $self->text_back_color->{$self->user_id2}, $prev, $prev, $next, $next;
+    return $html;
+}
+sub daily_html2_sp {
+    my ($self, $args) = @_;
+    my ($prev, $next) = @$args{qw/prev next/};
+
+    my $html = sprintf $self->dss->get_data_section("daily_html2_sp.html"), $prev, $prev, $next, $next;
+    return $html;
+}
+
+sub generate_daily {
+    my ($self, ) = @_;
+
+    my @talk_ymd = @{ $self->talk_ymd };
+    my $i = 0;
+
+    for my $ymd_i (@talk_ymd) {
+        $ymd_i =~ /(\d{4}_\d{2}_\d{2})_(\d+)/;
+        my ($ymd, $k) = ($1, $2);
+
+        my $next = $talk_ymd[$i - 1];
+        my $prev = ($talk_ymd[$i + 1] || $talk_ymd[0]);
+
+        my $html1 = $self->view_type eq "pc" ? $self->daily_html1_pc({ymd => $ymd_i, prev => $prev}) :
+                    $self->view_type eq "sp" ? $self->daily_html1_sp({ymd => $ymd_i, prev => $prev, next => $next}) : die "no match view_type";
+        unshift @{$self->daily_log->{$ymd}->{$k}->{body}}, $html1;
+
+        my $html2 = $self->view_type eq "pc" ? $self->daily_html2_pc({ymd => $ymd_i, next => $next}) :
+                    $self->view_type eq "sp" ? $self->daily_html2_sp({ymd => $ymd_i, prev => $prev, next => $next}) : die "no match view_type";
+        push @{$self->daily_log->{$ymd}->{$k}->{body}}, $html2;
+
+        open my $fh, ">", "$ymd_i.html";
+        print $fh @{$self->daily_log->{$ymd}->{$k}->{body}};
+        close $fh;
+        $i++;
+    }
+}
+
+package main;
+use Getopt::Long qw/GetOptions/;
+
+my %args;
+GetOptions(\%args, qw/user_id1=s user_id2=s user_name1=s user_name2=s dbfile=s view_type=s/);
+SkypeLog2HTML->new->init(\%args)->run;
+
+__DATA__
+@@ message_row.html
+@@ daily_log_part.html
+%s
+<div class="messageBox">
+    <div class="messageHeader">
+        <span class="skypeName">%s</span>
+        <span class="messageDate">%s</span>
+    </div>
+    <br />
+    <div class="messageBody %s">
+        %s
+    </div>
+</div>
+
+@@ index_template.html
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, user-scalable=no, initial-scale=1.0, minimum-scale=1.0, maximum-scale=1.0">
+<title>skype log</title>
+</head>
+<body>
+%s
+</body>
+</html>
+
+@@ daily_html1_pc.html
+<html>
+    <head>
+        <title>%s</title>
+        <style type="text/css">
+        <!--
+            .main_l1 {
+                float: left;
+                width: 190px;
+            }
+            .main_l2 {
+                float:  left;
+                width:  75px;
+            }
+            .main_l3 {
+                overflow: hidden;
+            }
+            .head1 {
+                background-color: #99F;
+                text-align: center;
+            }
+            .head2 {
+                background-color: #9CC;
+                text-align: center;
+            }
+            .head3 {
+                background-color: tan;
+                text-align: center;
+            }
+            .%s {
+                background-color: lightsteelblue;
+            }
+            .%s {
+                background-color: thistle;
+            }
+        -->
+        </style>
+    </head>
+    <body>
+        <div class="autopagerize_page_element">
+        <a href="%s.html">%s</a> %s
+        <p><p/>
+        <div class="main">
+        <div><div class="main_l1 head1">time</div><div class="main_l2 head2">From</div><div class="main_l3 head3">Body_xml</div></div>
+
+@@ daily_html2_pc.html
+        </div>
+        <p><p/>
+        %s <a href="%s.html" rel="next">%s</a>
+    </div>
+    <div class="autopagerize_insert_before"></div>
+    </body>
+</html>
+
+@@ daily_html1_sp.html
 <!DOCTYPE html>
 <html lang="ja">
     <head>
         <meta charset="utf-8" />
         <meta name="viewport" content="width=device-width, user-scalable=no, initial-scale=1.0, minimum-scale=1.0, maximum-scale=1.0">
         <meta name="format-detection" content="telephone=no,email=no" />
-        <title>$ymd</title>
+        <title>%s</title>
         <style type="text/css">
             <!--
             * {
@@ -295,10 +346,10 @@ sub daily_html1_sp {
             .indexLink {
                 text-align: center;
             }
-            .@{[$self->text_back_color->{$self->user_id1}]} {
+            .%s {
                 background-color: lightsteelblue;
              }
-            .@{[$self->text_back_color->{$self->user_id2}]} {
+            .%s {
                 background-color: thistle;
              }
         </style>
@@ -306,68 +357,24 @@ sub daily_html1_sp {
     <body>
         <header id="header">
             <div class="dateBox">
-                <span class="prevDate"><a href="$prev.html">$prev</a></span>
+                <span class="prevDate"><a href="%s.html">%s</a></span>
                 <span class="indexLink"><a href="index.html">index</a></span>
-                <span class="nextDate"><a href="$next.html">$next</a></span>
+                <span class="nextDate"><a href="%s.html">%s</a></span>
             </div>
         </header>
-_HTML
-    return $html;
-}
-sub daily_html2_sp {
-    my ($self, $args) = @_;
-    my ($prev, $next) = @$args{qw/prev next/};
 
-    my $html = <<_HTML;
+@@ daily_html2_sp.html
 
         <hr />
         <footer id="footer">
             <div class="dateBox">
-                <span class="prevDate"><a href="$prev.html">$prev</a></span>
+                <span class="prevDate"><a href="%s.html">%s</a></span>
                 <span class="indexLink"><a href="index.html">index</a></span>
-                <span class="nextDate"><a href="$next.html">$next</a></span>
+                <span class="nextDate"><a href="%s.html">%s</a></span>
             </div>
         </footer>
     </body>
 </html>
-_HTML
-    return $html;
-}
-
-sub generate_daily {
-    my ($self, ) = @_;
-
-    my @talk_ymd = @{ $self->talk_ymd };
-    my $i = 0;
-
-    for my $ymd_i (@talk_ymd) {
-        $ymd_i =~ /(\d{4}_\d{2}_\d{2})_(\d+)/;
-        my ($ymd, $k) = ($1, $2);
-
-        my $next = $talk_ymd[$i - 1];
-        my $prev = ($talk_ymd[$i + 1] || $talk_ymd[0]);
-
-        my $html1 = $self->view_type eq "pc" ? $self->daily_html1_pc({ymd => $ymd_i, prev => $prev}) :
-                    $self->view_type eq "sp" ? $self->daily_html1_sp({ymd => $ymd_i, prev => $prev, next => $next}) : die "no match view_type";
-        unshift @{$self->daily_log->{$ymd}->{$k}->{body}}, $html1;
-
-        my $html2 = $self->view_type eq "pc" ? $self->daily_html2_pc({ymd => $ymd_i, next => $next}) :
-                    $self->view_type eq "sp" ? $self->daily_html2_sp({ymd => $ymd_i, prev => $prev, next => $next}) : die "no match view_type";
-        push @{$self->daily_log->{$ymd}->{$k}->{body}}, $html2;
-
-        open my $fh, ">", "$ymd_i.html";
-        print $fh @{$self->daily_log->{$ymd}->{$k}->{body}};
-        close $fh;
-        $i++;
-    }
-}
-
-package main;
-use Getopt::Long qw/GetOptions/;
-
-my %args;
-GetOptions(\%args, qw/user_id1=s user_id2=s user_name1=s user_name2=s dbfile=s view_type=s/);
-SkypeLog2HTML->new->init(\%args)->run;
 
 __END__
 
