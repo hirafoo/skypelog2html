@@ -5,7 +5,7 @@ use warnings;
 package SkypeLog2HTML;
 use Class::Accessor::Lite (
     new => 1,
-    rw  => [qw/user_id1 user_id2 user_name1 user_name2 user_name_pair dbfile view_type text_back_color all_messages daily_log dbh talk_ymd dss _dss/],
+    rw  => [qw/user_id1 user_id2 user_name1 user_name2 user_name_pair dbfile view_type text_back_color all_messages daily_log dbh talk_ymd dss _dss past_limit/],
 );
 use Data::Section::Simple;
 use DBIx::Simple;
@@ -14,12 +14,13 @@ use Time::Piece;
 
 sub init {
     my ($self, $args) = @_;
-    my ($user_id1, $user_id2, $user_name1, $user_name2, $dbfile, $view_type) =
-        @$args{qw/user_id1 user_id2 user_name1 user_name2 dbfile view_type/};
+    my ($user_id1, $user_id2, $user_name1, $user_name2, $dbfile, $view_type, $past_limit) =
+        @$args{qw/user_id1 user_id2 user_name1 user_name2 dbfile view_type past_limit/};
     $user_name1 ||= $user_id1;
     $user_name2 ||= $user_id2;
     $dbfile ||= "main.db";
     $view_type ||= "pc";
+    $past_limit ||= 60 * 60 * 1;
     (($user_id1 && $user_id2) and (-f $dbfile))
         or pod2usage;
     $self->user_id1($user_id1);
@@ -42,6 +43,7 @@ sub init {
     $self->dbh($dbh);
     $self->dss(Data::Section::Simple->new("main"));
     $self->_dss(+{});
+    $self->past_limit($past_limit);
     return $self;
 }
 sub run {
@@ -75,7 +77,6 @@ sub get_all_messages {
 sub divide_messages_daily {
     my ($self, ) = @_;
 
-    my $past_limit = 3600;
     my (%daily_log, $diff);
     my ($before_author, $before_ymd, $last_tp) = ("", "", undef);
     while (my $row = $self->all_messages->hash) {
@@ -91,7 +92,7 @@ sub divide_messages_daily {
 
             if ($last_tp) {
                 $diff = $tp - $last_tp;
-                if ($diff > $past_limit) {
+                if ($diff > $self->past_limit) {
                     $i++;
                 }
             }
@@ -104,11 +105,11 @@ sub divide_messages_daily {
         $row->{body_xml} =~ s{\n}{<br />}g;
 
         my ($author, $body_xml) = ($row->{author}, $row->{body_xml});
-        my $print_author = (($author eq $before_author) and ($ymd eq $before_ymd) and not ($diff > $past_limit)) ? '&nbsp;' : $author;
+        my $print_author = (($author eq $before_author) and ($ymd eq $before_ymd) and not ($diff > $self->past_limit)) ? '&nbsp;' : $author;
         if (($print_author ne '&nbsp;') and ($self->view_type eq "sp")) {
             $print_author = $self->user_name_pair->{$print_author};
         }
-        my $hr_or_blank = (($author eq $before_author) and ($before_ymd eq $ymd) and not ($diff > $past_limit)) ? "" : "<hr />";
+        my $hr_or_blank = (($author eq $before_author) and ($before_ymd eq $ymd) and not ($diff > $self->past_limit)) ? "" : "<hr />";
         ($before_author, $before_ymd) = ($author, $ymd);
         my $color_class = $self->text_back_color->{$row->{author}};
 
