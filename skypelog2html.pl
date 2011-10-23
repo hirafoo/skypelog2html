@@ -69,7 +69,7 @@ sub get_all_messages {
     my ($self, ) = @_;
 
     my $query = sprintf
-        'SELECT timestamp, author, body_xml FROM Messages WHERE chatname LIKE "#%s/$%s;%%" OR chatname LIKE "#%s/$%s;%%" ORDER BY id ASC',
+        'SELECT timestamp, author, body_xml FROM Messages WHERE chatname LIKE "#%s/$%s;%%" OR chatname LIKE "#%s/$%s;%%" ORDER BY timestamp ASC',
         $self->user_id1, $self->user_id2, $self->user_id2, $self->user_id1;
     my $result = $self->dbh->query($query);
     $self->all_messages($result);
@@ -116,7 +116,7 @@ sub divide_messages_daily {
         my $body_row;
         if ($self->view_type eq "pc") {
             $body_row = sprintf $self->cache_dss("message_row_pc.html"),
-                $color_class, $ymd_hms, $print_author, $body_xml;
+                $color_class, $print_author, $ymd_hms, $body_xml;
         }
         elsif ($self->view_type eq "sp") {
             $body_row = sprintf $self->cache_dss("message_row_sp.html"),
@@ -259,11 +259,11 @@ __DATA__
             <!--
             .main_l1 {
                 float: left;
-                width: 190px;
+                width:  75px;
             }
             .main_l2 {
                 float:  left;
-                width:  75px;
+                width: 190px;
             }
             .main_l3 {
                 overflow: hidden;
@@ -294,7 +294,7 @@ __DATA__
             <a href="%s.html">%s</a> %s
             <p><p/>
             <div class="main">
-                <div><div class="main_l1 head1">time</div><div class="main_l2 head2">From</div><div class="main_l3 head3">Body_xml</div></div>
+                <div><div class="main_l1 head1">From</div><div class="main_l2 head2">time</div><div class="main_l3 head3">Body_xml</div></div>
 @@ daily_html2_pc.html
             </div>
             <p><p/>
