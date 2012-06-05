@@ -5,7 +5,11 @@ use warnings;
 package SkypeLog2HTML;
 use Class::Accessor::Lite (
     new => 1,
-    rw  => [qw/user_id1 user_id2 user_name1 user_name2 user_name_pair dbfile view_type text_back_color all_messages daily_log dbh talk_ymd dss _dss past_limit/],
+    rw  => [qw/
+        user_id1 user_id2 user_name1 user_name2 user_color1 user_color2
+        user_name_pair dbfile view_type text_back_color
+        all_messages daily_log dbh talk_ymd dss _dss past_limit
+    /],
 );
 use Data::Section::Simple;
 use DBIx::Simple;
@@ -33,9 +37,11 @@ sub init {
     });
     $self->dbfile($dbfile);
     $self->view_type($view_type);
+    $self->user_color1("userColor1");
+    $self->user_color2("userColor2");
     $self->text_back_color(+{
-        $self->user_id1 => "userColor1",
-        $self->user_id2 => "userColor2",
+        $self->user_id1 => $self->user_color1,
+        $self->user_id2 => $self->user_color2,
     });
     $self->daily_log(+{});
     my $query = sprintf 'dbi:SQLite:dbname=%s', $self->dbfile;
@@ -53,6 +59,7 @@ sub run {
     $self->divide_messages_daily;
     $self->generate_index;
     $self->generate_daily;
+    $self->generate_css;
     $self->dbh->disconnect;
 }
 sub cache_dss {
@@ -163,7 +170,7 @@ sub daily_html1_pc {
     my ($ymd, $prev) = @$args{qw/ymd prev/};
 
     my $html = sprintf $self->cache_dss("daily_html1_pc.html"),
-        $ymd, $self->text_back_color->{$self->user_id1}, $self->text_back_color->{$self->user_id2}, $prev, $prev, $ymd;
+        $ymd, $prev, $prev, $ymd;
     return $html;
 }
 sub daily_html2_pc {
@@ -178,7 +185,7 @@ sub daily_html1_sp {
     my ($ymd, $prev, $next) = @$args{qw/ymd prev next/};
 
     my $html = sprintf $self->cache_dss("daily_html1_sp.html"),
-        $ymd, $self->text_back_color->{$self->user_id1}, $self->text_back_color->{$self->user_id2}, $prev, $prev, $next, $next;
+        $ymd, $prev, $prev, $next, $next;
     return $html;
 }
 sub daily_html2_sp {
@@ -214,6 +221,18 @@ sub generate_daily {
         print $fh @{$self->daily_log->{$ymd}->{$k}->{body}};
         close $fh;
         $i++;
+    }
+}
+
+sub generate_css {
+    my ($self, ) = @_;
+
+    for my $type (qw/pc sp/) {
+        my $filename = "$type.css";
+        my $css = sprintf $self->cache_dss($filename), $self->user_color1, $self->user_color2;
+        open my $fh, ">", $filename;
+        print $fh  $css;
+        close $fh;
     }
 }
 
@@ -254,40 +273,8 @@ __DATA__
 @@ daily_html1_pc.html
 <html>
     <head>
+        <link rel="stylesheet" href="pc.css" />
         <title>%s</title>
-        <style type="text/css">
-            <!--
-            .main_l1 {
-                float: left;
-                width:  75px;
-            }
-            .main_l2 {
-                float:  left;
-                width: 190px;
-            }
-            .main_l3 {
-                overflow: hidden;
-            }
-            .head1 {
-                background-color: #99F;
-                text-align: center;
-            }
-            .head2 {
-                background-color: #9CC;
-                text-align: center;
-            }
-            .head3 {
-                background-color: tan;
-                text-align: center;
-            }
-            .%s {
-                background-color: lightsteelblue;
-            }
-            .%s {
-                background-color: thistle;
-            }
-            -->
-        </style>
     </head>
     <body>
         <div class="autopagerize_page_element">
@@ -310,58 +297,8 @@ __DATA__
         <meta charset="utf-8" />
         <meta name="viewport" content="width=device-width, user-scalable=no, initial-scale=1.0, minimum-scale=1.0, maximum-scale=1.0">
         <meta name="format-detection" content="telephone=no,email=no" />
+        <link rel="stylesheet" href="sp.css" />
         <title>%s</title>
-        <style type="text/css">
-            <!--
-            * {
-                margin: 0;
-                padding: 0;
-            }
-            header {
-                margin: 10px;
-            }
-            footer {
-                margin: 10px;
-            }
-            .messageHeader {
-                margin: 5px 1px 6px 2px;
-            }
-            .skypeName {
-                font-weight: bold;
-                float: left;
-            }
-            .messageBox {
-                margin: 0px 5px;
-            }
-            .messageDate {
-                float: right;
-                color: #9B9B9B;
-            }
-            .messageBody {
-                margin: 5px 0px;
-                clear: both;
-            }
-            .dateBox {
-                text-align: center;
-                font-size: 120%%;
-                font-weight: bold;
-            }
-            .prevDate {
-                float: left;
-            }
-            .nextDate {
-                float: right;
-            }
-            .indexLink {
-                text-align: center;
-            }
-            .%s {
-                background-color: lightsteelblue;
-             }
-            .%s {
-                background-color: thistle;
-             }
-        </style>
     </head>
     <body>
         <header id="header">
@@ -383,6 +320,85 @@ __DATA__
         </footer>
     </body>
 </html>
+@@ pc.css
+.main_l1 {
+    float: left;
+    width:  75px;
+}
+.main_l2 {
+    float:  left;
+    width: 190px;
+}
+.main_l3 {
+    overflow: hidden;
+}
+.head1 {
+    background-color: #99F;
+    text-align: center;
+}
+.head2 {
+    background-color: #9CC;
+    text-align: center;
+}
+.head3 {
+    background-color: tan;
+    text-align: center;
+}
+.%s {
+    background-color: lightsteelblue;
+}
+.%s {
+    background-color: thistle;
+}
+@@ sp.css
+* {
+    margin: 0;
+    padding: 0;
+}
+header {
+    margin: 10px;
+}
+footer {
+    margin: 10px;
+}
+.messageHeader {
+    margin: 5px 1px 6px 2px;
+}
+.skypeName {
+    font-weight: bold;
+    float: left;
+}
+.messageBox {
+    margin: 0px 5px;
+}
+.messageDate {
+    float: right;
+    color: #9B9B9B;
+}
+.messageBody {
+    margin: 5px 0px;
+    clear: both;
+}
+.dateBox {
+    text-align: center;
+    font-size: 120%%;
+    font-weight: bold;
+}
+.prevDate {
+    float: left;
+}
+.nextDate {
+    float: right;
+}
+.indexLink {
+    text-align: center;
+}
+.%s {
+    background-color: lightsteelblue;
+}
+.%s {
+    background-color: thistle;
+}
 
 __END__
 
