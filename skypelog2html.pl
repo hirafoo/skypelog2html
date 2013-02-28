@@ -1,4 +1,4 @@
-#!/usr/bin/perl
+#!/usr/bin/env perl
 use strict;
 use warnings;
 
@@ -8,13 +8,23 @@ use Class::Accessor::Lite (
     rw  => [qw/
         user_id1 user_id2 user_name1 user_name2 user_color1 user_color2
         user_name_pair dbfile view_type text_back_color
-        all_messages daily_log dbh talk_ymd dss _dss past_limit
+        all_messages daily_log dbh talk_ymd dss _dss past_limit wday_map
     /],
 );
 use Data::Section::Simple;
 use DBIx::Simple;
 use Pod::Usage qw/pod2usage/;
 use Time::Piece;
+
+my %WDAY_MAP = qw/
+    Mon 月
+    Tue 火
+    Wed 水
+    Thu 木
+    Fri 金
+    Sat 土
+    Sun 日
+/;
 
 sub init {
     my ($self, $args) = @_;
@@ -50,6 +60,7 @@ sub init {
     $self->dss(Data::Section::Simple->new("main"));
     $self->_dss(+{});
     $self->past_limit($past_limit);
+    $self->wday_map(+{});
     return $self;
 }
 sub run {
@@ -92,6 +103,7 @@ sub divide_messages_daily {
         my $hms = $tp->hms;
         my $ymd = $tp->ymd('_');
         my $ymd_hms = join " ", $tp->ymd("/"), $tp->hms;
+        $self->wday_map->{$ymd} ||= $WDAY_MAP{$tp->wdayname};
 
         my $i;
         if (ref $daily_log{$ymd}) {
@@ -127,7 +139,7 @@ sub divide_messages_daily {
         }
         elsif ($self->view_type eq "sp") {
             $body_row = sprintf $self->cache_dss("message_row_sp.html"),
-                $hr_or_blank, $print_author, $ymd_hms, $color_class, $body_xml;
+                $hr_or_blank, $print_author, $ymd_hms, $self->wday_map->{$ymd}, $color_class, $body_xml;
         }
         push @{$daily_log{$ymd}->{$i}->{body}}, $body_row;
 
@@ -153,7 +165,8 @@ sub generate_index {
             my $line_number = @{$self->daily_log->{$ymd}->{$i}->{body}};
             my $talk_ymd = "$ymd\_$i";
             push @talk_ymd, $talk_ymd;
-            push @log_index, qq{<a href="$talk_ymd.html" target="_blank">$ymd $i</a> (line: $line_number)<br />\n};
+            my $wday = $self->wday_map->{$ymd};
+            push @log_index, qq{<a href="$talk_ymd.html" target="_blank">$ymd ($wday) $i</a> (line: $line_number)<br />\n};
         }
     }
 
@@ -251,7 +264,7 @@ __DATA__
 <div class="messageBox">
     <div class="messageHeader">
         <span class="skypeName">%s</span>
-        <span class="messageDate">%s</span>
+        <span class="messageDate">%s (%s)</span>
     </div>
     <br />
     <div class="messageBody %s">
