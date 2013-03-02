@@ -102,8 +102,8 @@ sub divide_messages_daily {
         my $tp = Time::Piece->new($row->{timestamp});
         my $hms = $tp->hms;
         my $ymd = $tp->ymd('_');
-        my $ymd_hms = join " ", $tp->ymd("/"), $tp->hms;
         $self->wday_map->{$ymd} ||= $WDAY_MAP{$tp->wdayname};
+        my $ymd_hms = sprintf '%s (%s) %s', $tp->ymd("/"), $self->wday_map->{$ymd}, $tp->hms;
 
         my $i;
         if (ref $daily_log{$ymd}) {
@@ -139,7 +139,7 @@ sub divide_messages_daily {
         }
         elsif ($self->view_type eq "sp") {
             $body_row = sprintf $self->cache_dss("message_row_sp.html"),
-                $hr_or_blank, $print_author, $ymd_hms, $self->wday_map->{$ymd}, $color_class, $body_xml;
+                $hr_or_blank, $print_author, $ymd_hms, $color_class, $body_xml;
         }
         push @{$daily_log{$ymd}->{$i}->{body}}, $body_row;
 
@@ -264,7 +264,7 @@ __DATA__
 <div class="messageBox">
     <div class="messageHeader">
         <span class="skypeName">%s</span>
-        <span class="messageDate">%s (%s)</span>
+        <span class="messageDate">%s</span>
     </div>
     <br />
     <div class="messageBody %s">
