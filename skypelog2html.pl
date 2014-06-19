@@ -34,7 +34,11 @@ sub init {
     $user_name2 ||= $user_id2;
     $dbfile ||= "main.db";
     $view_type ||= "pc";
-    $past_limit ||= 60 * 60 * 1;
+    if ($past_limit) {
+        $past_limit *= 60*60;
+    } else {
+        $past_limit ||= 60 * 60 * 1;
+    }
     (($user_id1 && $user_id2) and (-f $dbfile))
         or pod2usage;
     $self->user_id1($user_id1);
@@ -253,7 +257,7 @@ package main;
 use Getopt::Long qw/GetOptions/;
 
 my %args;
-GetOptions(\%args, qw/user_id1=s user_id2=s user_name1=s user_name2=s dbfile=s view_type=s/);
+GetOptions(\%args, qw/user_id1=s user_id2=s user_name1=s user_name2=s dbfile=s view_type=s past_limit=s/);
 SkypeLog2HTML->new->init(\%args)->run;
 
 __DATA__
@@ -297,7 +301,7 @@ __DATA__
                 <div><div class="main_l1 head1">From</div><div class="main_l2 head2">time</div><div class="main_l3 head3">Body_xml</div></div>
 @@ daily_html2_pc.html
             </div>
-            <p><p/>
+            <p></p>
             %s <a href="%s.html" rel="next">%s</a>
         </div>
         <div class="autopagerize_insert_before"></div>
