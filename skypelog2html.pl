@@ -128,6 +128,11 @@ sub divide_messages_daily {
         $row->{body_xml} =~ s{\n}{<br />}g;
 
         my ($author, $body_xml) = ($row->{author}, $row->{body_xml});
+
+        if ($body_xml =~ /a href=/) {
+            $body_xml =~ s/a href=/a target="_blank" href=/g;
+        }
+
         my $print_author = (($author eq $before_author) and ($ymd eq $before_ymd) and not ($diff > $self->past_limit)) ? '&nbsp;' : $author;
         if (($print_author ne '&nbsp;') and ($self->view_type eq "sp")) {
             $print_author = $self->user_name_pair->{$print_author};
