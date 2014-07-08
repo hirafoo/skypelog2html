@@ -301,7 +301,7 @@ __DATA__
     <body>
         <div class="autopagerize_page_element">
             <a href="%s.html">%s</a> %s
-            <p><p/>
+            <p></p>
             <div class="main">
                 <div><div class="main_l1 head1">From</div><div class="main_l2 head2">time</div><div class="main_l3 head3">Body_xml</div></div>
 @@ daily_html2_pc.html
